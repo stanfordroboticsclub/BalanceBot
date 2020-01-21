@@ -53,6 +53,46 @@ class ComplementaryFilter:
         rad = math.atan2(self.lastSin, self.lastCos)
         return math.degrees(rad)
 
+class PID:
+
+    def __init__(self, Kp, Ki, Kd, setpoint = 0, limits = (-1,1) ):
+        self.setpoint = setpoint
+        self.limits = limits
+
+        self.intergral = 0
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+
+    def measure(self, value):
+        dt = time.time() - lastMeasure
+        lastMeasure = time.time()
+
+        error = value - self.setpoint
+
+        self.intergral   += error * dt
+        self.derivative   = error / dt
+        self.proportional = error
+
+        #prevents windup
+        self.intergral = self.clamp(self.intergral)
+
+    def get_output(self):
+        out = 0
+
+        out += self.Kp * self.proportional
+        out += self.Ki * self.intergral
+        out += self.Kd * self.derivative
+
+        return self.clamp(out)
+
+    def clamp(self,value):
+        if value > self.limits[1]:
+            return self.limits[1]
+        if value < self.limits[0]:
+            return self.limits[0]
+        return value
+
 
 i2c = busio.I2C(board.SCL, board.SDA)
 imu = adafruit_lsm9ds1.LSM9DS1_I2C(i2c)
@@ -62,8 +102,8 @@ imu = adafruit_lsm9ds1.LSM9DS1_I2C(i2c)
 # time.sleep(0.5)
 # kit.motor1.throttle = 0
 
-
 filt = ComplementaryFilter(0.95)
+pid = PID(1, 0, 0)
 
 lastGyro = 0
 lastAccel = 0

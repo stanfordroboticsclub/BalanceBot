@@ -19,7 +19,8 @@ class ComplementaryFilter:
 
     def update_accel(self,accel_y, accel_z):
         # heading is in degrees
-        rad = math.atan2(accel_z, accel_y)
+        rad = math.atan2(accel_z, -accel_y)
+        # print("accel angle", math.degrees(rad))
 
         if self.lastSin == None or self.lastSin == None:
             self.lastSin = math.sin(rad)
@@ -46,10 +47,11 @@ class ComplementaryFilter:
         self.lastCos = math.cos(rad)
 
         self.lastGyro = (self.lastGyro + omega * delta_t) % 360
+        # print("gyro only", self.lastGyro)
 
     def get_angle(self):
         rad = math.atan2(self.lastSin, self.lastCos)
-        return math.degrees(rad) % 360
+        return math.degrees(rad)
 
 
 i2c = busio.I2C(board.SCL, board.SDA)
@@ -61,7 +63,7 @@ imu = adafruit_lsm9ds1.LSM9DS1_I2C(i2c)
 # kit.motor1.throttle = 0
 
 
-filt = ComplementaryFilter(0.99)
+filt = ComplementaryFilter(0.95)
 
 lastGyro = 0
 lastAccel = 0
@@ -70,12 +72,15 @@ lastPrint = 0
 while True:
     if time.time() - lastAccel > 0.10:
         accel_x, accel_y, accel_z = imu.acceleration
-        filt.update_accel(accel_z, accel_y)
+        filt.update_accel(accel_y, accel_z)
         lastAccel = time.time()
 
     if time.time() - lastGyro > 0.01:
         gyro_x, gyro_y, gyro_z = imu.gyro
-        filt.update_gyro(-gyro_z)
+        gyro_x -= 1.9 # super hack calibration
+        # print('gyro x', gyro_x) # move calibration untill
+        # readings have mean zero when stataionary
+        filt.update_gyro(gyro_x)
         lastGyro = time.time()
 
     if time.time() - lastPrint > 0.05:

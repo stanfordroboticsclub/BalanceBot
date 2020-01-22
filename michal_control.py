@@ -110,8 +110,8 @@ def drive(value):
     kit.motor1.throttle = -value
     kit.motor2.throttle =  value
 
-filt = ComplementaryFilter(0.95)
-pid = PID(0.10, 0.05, 0, limits=(-1, 1) )
+filt = ComplementaryFilter(0.97)
+pid = PID(0.15, 0.00, 0.0005, limits=(-1, 1) )
 
 lastGyro = 0
 lastAccel = 0
@@ -125,19 +125,25 @@ def calibrate_gyro():
         su += gyro_x
         time.sleep(0.01)
     print('gyro calibration value:',su / T)
-    time.sleep(5)
+    exit()
 
 # calibrate_gyro()
-gyro_x_cailb = 2.078
+gyro_x_cailb = 2.15
+
+out_of_bound_count = 0
+
+for _ in range(100):
+    accel_x, accel_y, accel_z = imu.acceleration
+    filt.update_accel(accel_y, accel_z)
 
 try:
     while True:
-        if time.time() - lastAccel > 0.05:
+        if time.time() - lastAccel > 0.03:
             accel_x, accel_y, accel_z = imu.acceleration
             filt.update_accel(accel_y, accel_z)
             lastAccel = time.time()
 
-        if time.time() - lastGyro > 0.01:
+        if time.time() - lastGyro > 0.005:
             gyro_x, gyro_y, gyro_z = imu.gyro
             gyro_x -= gyro_x_cailb # super hack calibration
             # print('gyro x', gyro_x) # move calibration untill
@@ -145,17 +151,22 @@ try:
             filt.update_gyro(gyro_x)
             lastGyro = time.time()
 
-        if time.time() - lastPrint > 0.01:
+        if time.time() - lastPrint > 0.005:
             lastPrint = time.time()
             angle = filt.get_angle()
             output = pid.get_output()
 
             if math.fabs(angle) > 20:
-                exit()
-
-            pid.measure(filt.get_angle())
-            print("angle", angle, output)
-            drive(output)
+                print("angle is", angle)
+                out_of_bound_count +=1
+                drive(0)
+                if out_of_bound_count > 10:
+                    exit()
+            else:
+                pid.measure(filt.get_angle())
+                print("angle", angle, output)
+                drive(output)
+                out_of_bound_count = 0
 finally:
     print('ending')
     drive(0)

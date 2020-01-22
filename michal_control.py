@@ -18,7 +18,6 @@ class ComplementaryFilter:
         self.lastGyro = 0
 
     def update_accel(self,accel_y, accel_z):
-        # heading is in degrees
         rad = math.atan2(accel_z, -accel_y)
         # print("accel angle", math.degrees(rad))
 
@@ -60,15 +59,22 @@ class PID:
         self.limits = limits
 
         self.intergral = 0
+        self.output = 0
+        self.lastMeasure = None
+
         self.Kp = Kp
         self.Ki = Ki
         self.Kd = Kd
 
     def measure(self, value):
-        dt = time.time() - lastMeasure
-        lastMeasure = time.time()
+        if self.lastMeasure == None:
+            self.lastMeasure = time.time()
+            return 
 
-        error = value - self.setpoint
+        dt = time.time() - self.lastMeasure
+        self.lastMeasure = time.time()
+
+        error = self.setpoint - value
 
         self.intergral   += error * dt
         self.derivative   = error / dt
@@ -77,14 +83,15 @@ class PID:
         #prevents windup
         self.intergral = self.clamp(self.intergral)
 
-    def get_output(self):
         out = 0
-
         out += self.Kp * self.proportional
         out += self.Ki * self.intergral
         out += self.Kd * self.derivative
 
-        return self.clamp(out)
+        self.output = self.clamp(out)
+
+    def get_output(self):
+        return self.output
 
     def clamp(self,value):
         if value > self.limits[1]:
@@ -97,32 +104,58 @@ class PID:
 i2c = busio.I2C(board.SCL, board.SDA)
 imu = adafruit_lsm9ds1.LSM9DS1_I2C(i2c)
 
-# kit = MotorKit()
-# kit.motor1.throttle = 1.0
-# time.sleep(0.5)
-# kit.motor1.throttle = 0
+
+kit = MotorKit()
+def drive(value):
+    kit.motor1.throttle = -value
+    kit.motor2.throttle =  value
 
 filt = ComplementaryFilter(0.95)
-pid = PID(1, 0, 0)
+pid = PID(0.10, 0.05, 0, limits=(-1, 1) )
 
 lastGyro = 0
 lastAccel = 0
 lastPrint = 0
 
-while True:
-    if time.time() - lastAccel > 0.10:
-        accel_x, accel_y, accel_z = imu.acceleration
-        filt.update_accel(accel_y, accel_z)
-        lastAccel = time.time()
-
-    if time.time() - lastGyro > 0.01:
+def calibrate_gyro():
+    su = 0
+    T = 1000
+    for _ in range(T):
         gyro_x, gyro_y, gyro_z = imu.gyro
-        gyro_x -= 1.9 # super hack calibration
-        # print('gyro x', gyro_x) # move calibration untill
-        # readings have mean zero when stataionary
-        filt.update_gyro(gyro_x)
-        lastGyro = time.time()
+        su += gyro_x
+        time.sleep(0.01)
+    print('gyro calibration value:',su / T)
+    time.sleep(5)
 
-    if time.time() - lastPrint > 0.05:
-        print(filt.get_angle())
-        lastPrint = time.time()
+# calibrate_gyro()
+gyro_x_cailb = 2.078
+
+try:
+    while True:
+        if time.time() - lastAccel > 0.05:
+            accel_x, accel_y, accel_z = imu.acceleration
+            filt.update_accel(accel_y, accel_z)
+            lastAccel = time.time()
+
+        if time.time() - lastGyro > 0.01:
+            gyro_x, gyro_y, gyro_z = imu.gyro
+            gyro_x -= gyro_x_cailb # super hack calibration
+            # print('gyro x', gyro_x) # move calibration untill
+            # readings have mean zero when stataionary
+            filt.update_gyro(gyro_x)
+            lastGyro = time.time()
+
+        if time.time() - lastPrint > 0.01:
+            lastPrint = time.time()
+            angle = filt.get_angle()
+            output = pid.get_output()
+
+            if math.fabs(angle) > 20:
+                exit()
+
+            pid.measure(filt.get_angle())
+            print("angle", angle, output)
+            drive(output)
+finally:
+    print('ending')
+    drive(0)

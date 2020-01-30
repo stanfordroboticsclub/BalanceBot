@@ -17,9 +17,10 @@ class ComplementaryFilter:
         self.lastGyroTime = None
         self.lastGyro = 0
 
-    def update_accel(self,accel_y, accel_z):
+    def update_accel(self,accel_y, accel_z, fudge =0):
         rad = math.atan2(accel_z, -accel_y)
         # print("accel angle", math.degrees(rad))
+        rad -= math.radians(fudge)
 
         if self.lastSin == None or self.lastSin == None:
             self.lastSin = math.sin(rad)
@@ -111,7 +112,7 @@ def drive(value):
     kit.motor2.throttle =  value
 
 filt = ComplementaryFilter(0.97)
-pid = PID(0.15, 0.00, 0.0005, limits=(-1, 1) )
+pid = PID(0.12, 0.0001101001, 0.00, limits=(-0.7, 0.7) )
 
 lastGyro = 0
 lastAccel = 0
@@ -128,7 +129,7 @@ def calibrate_gyro():
     exit()
 
 # calibrate_gyro()
-gyro_x_cailb = 2.15
+gyro_x_cailb = 1.23
 
 out_of_bound_count = 0
 
@@ -139,11 +140,13 @@ for _ in range(100):
 try:
     while True:
         if time.time() - lastAccel > 0.03:
+            # print("accel time", time.time() - lastAccel)
             accel_x, accel_y, accel_z = imu.acceleration
-            filt.update_accel(accel_y, accel_z)
+            filt.update_accel(accel_y, accel_z, fudge = -1.0)
             lastAccel = time.time()
 
         if time.time() - lastGyro > 0.005:
+            # print("gyro time", time.time() - lastGyro)
             gyro_x, gyro_y, gyro_z = imu.gyro
             gyro_x -= gyro_x_cailb # super hack calibration
             # print('gyro x', gyro_x) # move calibration untill
@@ -152,6 +155,7 @@ try:
             lastGyro = time.time()
 
         if time.time() - lastPrint > 0.005:
+            # print("print time", time.time() - lastPrint)
             lastPrint = time.time()
             angle = filt.get_angle()
             output = pid.get_output()
